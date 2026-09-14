@@ -119,7 +119,12 @@ async function handleOne(msg) {
   if (method === 'notifications/initialized' || method === 'notifications/cancelled') return;
   if (method === 'ping') { if (id !== undefined) send(jsonRpcResult(id, {})); return; }
   if (method === 'tools/list') { if (id !== undefined) send(jsonRpcResult(id, { tools: TOOLS })); return; }
-  if (method === 'resources/list') { if (id !== undefined) send(jsonRpcResult(id, { resources: [] })); return; }
+  if (method === 'resources/list') { if (id !== undefined) send(jsonRpcResult(id, { resources: [{ uri:'bridge://about', name:'ChatGPT Local Bridge status', description:'Static information confirming the bridge MCP server is reachable.', mimeType:'text/plain' }] })); return; }
+  if (method === 'resources/read') {
+    const uri=String(msg.params?.uri??'');
+    if (uri!=='bridge://about') { if(id!==undefined) send(jsonRpcError(id,-32602,`Unknown resource: ${uri}`)); return; }
+    if(id!==undefined) send(jsonRpcResult(id,{contents:[{uri:'bridge://about',mimeType:'text/plain',text:`ChatGPT Local Bridge ${VERSION} reachable on this Windows PC.`}]})); return;
+  }
   if (method === 'prompts/list') { if (id !== undefined) send(jsonRpcResult(id, { prompts: [] })); return; }
   if (method === 'tools/call') {
     const name = String(msg.params?.name ?? '');
