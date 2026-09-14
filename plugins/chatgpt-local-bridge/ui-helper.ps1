@@ -90,6 +90,8 @@ public static class ClbUi
     [DllImport("user32.dll", SetLastError=true)] static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public InputUnion U; }
@@ -111,6 +113,16 @@ public static class ClbUi
     static Thread uiThread;
     static ClbOverlayForm overlay;
     static ManualResetEvent ready = new ManualResetEvent(false);
+
+
+    public static bool FocusWindow(long hwnd)
+    {
+        IntPtr h = new IntPtr(hwnd);
+        if (h == IntPtr.Zero) return false;
+        ShowWindow(h, 9); // SW_RESTORE
+        Thread.Sleep(80);
+        return SetForegroundWindow(h);
+    }
 
     public static void Start()
     {
@@ -586,6 +598,10 @@ while ($true) {
       'screen-info' {
         $v=[ClbUi]::VirtualScreen; $p=[ClbUi]::CursorPoint
         Send-Reply @{ id=$id; ok=$true; data=@{ virtualX=$v.X; virtualY=$v.Y; virtualWidth=$v.Width; virtualHeight=$v.Height; cursorX=$p.X; cursorY=$p.Y } }
+      }
+      'focus-window' {
+        $ok=[ClbUi]::FocusWindow([long]$cmd.hwnd)
+        Send-Reply @{ id=$id; ok=$true; data=@{ hwnd=[long]$cmd.hwnd; focused=[bool]$ok } }
       }
       'screen-capture' {
         $iw=0; $ih=0; $vx=0; $vy=0; $vw=0; $vh=0; $bytes=0
