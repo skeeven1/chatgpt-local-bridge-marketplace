@@ -20,7 +20,7 @@ try {
   child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
   const list=await req(2,'tools/list',{});
   const names=(list.result?.tools??[]).map(x=>x.name);
-  for(const n of ['pc_status','screen_capture','mouse_move','paint_render_target','run_task']) if(!names.includes(n)) errors.push('missing '+n);
+  for(const n of ['pc_status','screen_capture','mouse_move','paint_render_target','draw_in_paint','run_task']) if(!names.includes(n)) errors.push('missing '+n);
   const status=await req(3,'tools/call',{name:'pc_status',arguments:{}});
   if(status.result?.isError) errors.push('pc_status error');
 } catch(e) { errors.push(String(e?.message??e)); }
