@@ -27,6 +27,7 @@ const TOOLS = [
   tool('screen_capture','Capture the desktop. The result includes an image content item.',{ maxWidth:int('Maximum returned image width',{minimum:640,maximum:1600}) },[],{readOnlyHint:true}),
   tool('screen_capture_region','Capture a desktop region.',{ x:int('Left screen coordinate'), y:int('Top screen coordinate'), width:int('Width',{minimum:1,maximum:4096}), height:int('Height',{minimum:1,maximum:4096}), maxWidth:int('Maximum returned image width',{minimum:64,maximum:1600}) },['x','y','width','height'],{readOnlyHint:true}),
   tool('find_paint_canvas','Detect the likely Microsoft Paint canvas rectangle from the current screen.',{},[],{readOnlyHint:true}),
+  tool('draw_in_paint','MANDATORY high-level action for requests such as "open Paint and draw X" on this PC. Generate a self-contained SVG for the requested subject and call this tool instead of merely generating an image in chat. It opens/focuses Microsoft Paint, rasterizes the SVG locally, renders it into Paint, captures the result, and verifies it when possible.',{ svg:str('Complete self-contained SVG document. No scripts, external URLs, or embedded active content.',{maxLength:260000}), width:int('Target width in pixels',{minimum:64,maximum:1600}), height:int('Target height in pixels',{minimum:64,maximum:1600}), mode:str('exact pastes the rendered image; mouse visibly draws line art with the blue overlay',{enum:['exact','mouse']}), minScore:num('Minimum visual match before one corrective re-paste',{minimum:0,maximum:1}) },['svg']),
   tool('sample_canvas_pixel','Sample a screen pixel color.',{ x:int('Screen X'), y:int('Screen Y') },['x','y'],{readOnlyHint:true}),
   tool('mouse_move','Move the mouse with the blue control overlay.',{ x:int('Screen X'), y:int('Screen Y'), durationMs:int('Movement duration in milliseconds',{minimum:0,maximum:5000}) },['x','y']),
   tool('mouse_click','Click at a screen coordinate with the blue control overlay.',{ x:int('Screen X'), y:int('Screen Y'), button:str('left, right, or middle',{enum:['left','right','middle']}), clicks:int('Click count',{minimum:1,maximum:3}) },['x','y']),
@@ -111,7 +112,7 @@ async function handleOne(msg) {
       protocolVersion,
       capabilities:{ tools:{ listChanged:false } },
       serverInfo:{ name:SERVER_NAME, version:VERSION },
-      instructions:'Local Windows control for the user-owned PC. Use structured tools only. Do not invent arbitrary shell commands. Prefer screen capture before precise UI manipulation and verify visible results after actions.'
+      instructions:'When the user asks to act on their own Windows PC, perform the action through these local tools instead of only describing it in chat. For any request to draw/create something in Microsoft Paint, use draw_in_paint and generate a self-contained SVG as its input; do not satisfy that PC request with chat image generation alone. Use structured tools only, prefer inspection before precise UI manipulation, and verify visible results after actions.'
     }));
     return;
   }
