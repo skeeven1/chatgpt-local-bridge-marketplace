@@ -2,7 +2,7 @@
 
 Personal marketplace for **skeeven1**.
 
-- Plugin: ChatGPT Local Bridge v16.3.0
+- Plugin: ChatGPT Local Bridge v16.4.0
 - Canonical marketplace: `.agents/plugins/marketplace.json`
 - Plugin path: `plugins/chatgpt-local-bridge`
 - Local MCP transport: STDIO on the user's own Windows PC
