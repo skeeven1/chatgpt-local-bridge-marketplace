@@ -1,32 +1,47 @@
 ---
 name: local-pc-control
-description: Use ChatGPT Local Bridge automatically whenever the user asks to do something on their own Windows PC or an allowed local workspace.
+description: Execute requests on the user's own Windows PC automatically through ChatGPT Local Bridge. PC-action requests must be performed locally rather than merely simulated in chat.
 ---
 
-# ChatGPT Local Bridge workflow
+# ChatGPT Local Bridge — mandatory local-action routing
 
-Use the local bridge automatically when the user's intent is to act on their own Windows PC or an allowed workspace. The user should speak normally and should never need to name a tool.
+When this plugin is active and the user asks to **do something on their own Windows PC**, treat that as an action request, not as a request for a chat-only answer. The user speaks normally and never needs to name a tool.
 
-## Core behavior
+## Highest-priority routing rules
 
-- Infer the requested action from natural language and call the smallest relevant bridge tools yourself.
-- Do not ask the user to type tool names, JSON, coordinates, or shell commands.
-- For GUI work, inspect before acting: use `screen_capture`, `screen_info`, or `list_windows` as needed.
-- After GUI changes, capture the screen again and verify the visible result before claiming success.
-- For precise UI work, use the blue-overlay mouse tools and re-check the screen between meaningful stages.
-- For Paint/image tasks, prefer high-fidelity target rendering when the user wants the final image; use visible mouse rendering when the user explicitly wants to watch the drawing process. Verify the result afterward.
-- For development tasks, read the relevant files, make bounded edits only inside configured workspaces, run the appropriate typecheck/test/build, then inspect diff/status before reporting completion.
-- Prefer existing package scripts (`npm_script` / `run_task`) over arbitrary command execution. There is no arbitrary remote shell capability.
-- Never claim an app opened, a file changed, a test passed, or a drawing succeeded until the local tool result or a post-action screen capture verifies it.
-- If an operation is destructive or sensitive, follow the bridge's confirmation requirements rather than weakening them.
+- If the request contains an explicit PC action such as **open, launch, click, type, draw in Paint, edit a local project, run tests, build, inspect the screen, or verify an app**, invoke the relevant bridge tool before giving a normal response.
+- **Never satisfy a PC-action request merely by generating an image, writing instructions, or describing what would happen.** Perform it through the bridge when the required capability exists.
+- In particular, requests equivalent to **“ouvre Paint et dessine X” / “draw X in Paint” MUST use `draw_in_paint`.** Generate a self-contained SVG representation of X yourself and pass that SVG to the tool.
+- Do **not** use native chat image generation as the final action for a Paint request. Native image generation is appropriate only when the user explicitly asks for an image in the chat rather than an action on their PC.
+- Prefer `draw_in_paint` over manually chaining low-level mouse tools. Use low-level mouse tools only for UI correction, interaction, or when the user explicitly wants the visible mouse-drawing mode.
 
-## Typical mappings
+## GUI workflow
 
-- "ouvre Paint" → discover/launch Paint, then verify with windows or screen capture.
-- "dessine Gojo dans Paint" → ensure Paint is visible, create or receive a target image, render it, capture the result, compare/correct if needed.
-- "modifie DoOnce pour X" → inspect `doonce`, edit only the needed files, run typecheck/tests/build as appropriate, inspect diff, restart/verify if relevant.
-- "ouvre Rayman" → discover the installed app, launch the resolved GUI entry, verify the process/window.
+- Inspect before precise interaction with `screen_capture`, `screen_info`, or `list_windows` when needed.
+- Use the blue-overlay mouse tools for clicks, drags, scrolling, and visible mouse drawing.
+- After GUI changes, capture the screen again and verify the result before claiming success.
+- `draw_in_paint` already opens/focuses Paint, rasterizes the SVG locally, renders it, captures the desktop, and attempts visual verification.
+
+## Development workflow
+
+For requests such as “modifie DoOnce pour X”:
+1. inspect the relevant files inside the configured workspace;
+2. make bounded edits only inside that workspace;
+3. run typecheck/tests/build as appropriate;
+4. inspect diff/status;
+5. restart/verify the app if relevant;
+6. report only verified results.
+
+Prefer existing package scripts (`npm_script` / `run_task`). There is no arbitrary remote shell capability.
+
+## Examples
+
+- “ouvre Paint” → `launch_app` for Paint, then verify.
+- “ouvre Paint et dessine Gojo” → create a detailed self-contained SVG portrait and call **`draw_in_paint`**. Do not answer with a chat-generated image.
+- “dessine-le à la souris” → `draw_in_paint` with `mode: mouse`, then screen-capture and correct if needed.
+- “ouvre Rayman” → discover/launch Rayman and verify its window/process.
+- “corrige DoOnce puis teste” → inspect/edit workspace files, run tests/typecheck/build, inspect diff, verify.
 
 ## Safety boundary
 
-Stay within the bridge's exposed structured tools. Do not invent a hidden shell, encode commands to evade controls, or access paths outside configured workspace roots.
+Stay within exposed structured tools. Do not invent a hidden shell, encode commands to evade controls, or access paths outside configured workspace roots.
