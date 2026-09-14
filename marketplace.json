@@ -1,0 +1,20 @@
+{
+  "name": "chatgpt-local-bridge-marketplace",
+  "interface": {
+    "displayName": "ChatGPT Local Bridge"
+  },
+  "plugins": [
+    {
+      "name": "chatgpt-local-bridge",
+      "source": {
+        "source": "local",
+        "path": "./plugins/chatgpt-local-bridge"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_USE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
