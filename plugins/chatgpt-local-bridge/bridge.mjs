@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
-const VERSION = '16.3.0';
+const VERSION = '16.4.0';
 const PROTOCOL = 'chatgpt-local-bridge-v15';
 const IS_WIN = process.platform === 'win32';
 const MAX_TEXT_BYTES = 256 * 1024;
