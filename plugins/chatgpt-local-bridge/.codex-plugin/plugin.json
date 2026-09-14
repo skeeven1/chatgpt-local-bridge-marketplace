@@ -1,0 +1,41 @@
+{
+  "name": "chatgpt-local-bridge",
+  "version": "16.2.0",
+  "description": "Control the user's own Windows PC and local development workspaces directly from normal ChatGPT requests.",
+  "author": {
+    "name": "skeeven1 / ChatGPT Local Bridge"
+  },
+  "license": "MIT",
+  "keywords": [
+    "windows",
+    "desktop",
+    "local-pc",
+    "automation",
+    "development",
+    "paint",
+    "ui-automation"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "ChatGPT Local Bridge",
+    "shortDescription": "Act directly on this Windows PC from normal chat requests.",
+    "longDescription": "ChatGPT Local Bridge exposes bounded local Windows and workspace actions to ChatGPT Desktop. Ask naturally to open an app, inspect the screen, interact with a GUI, edit an allowed project, run tests or builds, or verify results. The assistant chooses the appropriate local tools automatically; users do not need to name tools.",
+    "developerName": "ChatGPT Local Bridge",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Open Paint and draw what I ask for",
+      "Work on DoOnce and verify the change",
+      "Open an installed app on my PC"
+    ],
+    "brandColor": "#1684FF",
+    "screenshots": []
+  },
+  "homepage": "https://github.com/skeeven1/chatgpt-local-bridge-marketplace",
+  "repository": "https://github.com/skeeven1/chatgpt-local-bridge-marketplace"
+}
