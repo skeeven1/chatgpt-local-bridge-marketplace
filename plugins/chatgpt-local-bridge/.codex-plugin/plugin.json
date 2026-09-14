@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-local-bridge",
-  "version": "16.2.0",
+  "version": "16.3.0",
   "description": "Control the user's own Windows PC and local development workspaces directly from normal ChatGPT requests.",
   "author": {
     "name": "skeeven1 / ChatGPT Local Bridge"
@@ -19,8 +19,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "ChatGPT Local Bridge",
-    "shortDescription": "Act directly on this Windows PC from normal chat requests.",
-    "longDescription": "ChatGPT Local Bridge exposes bounded local Windows and workspace actions to ChatGPT Desktop. Ask naturally to open an app, inspect the screen, interact with a GUI, edit an allowed project, run tests or builds, or verify results. The assistant chooses the appropriate local tools automatically; users do not need to name tools.",
+    "shortDescription": "Execute normal-language requests directly on this Windows PC, including GUI actions and Paint drawing.",
+    "longDescription": "ChatGPT Local Bridge exposes bounded local Windows and workspace actions to ChatGPT Desktop. When a request explicitly targets this PC, the assistant should perform it through the bridge rather than merely describing or simulating it in chat. For Paint drawing requests, the bridge provides a high-level draw_in_paint action so the assistant can generate a self-contained SVG and render it directly into Microsoft Paint. Users speak normally and never need to name tools.",
     "developerName": "ChatGPT Local Bridge",
     "category": "Developer Tools",
     "capabilities": [
@@ -29,7 +29,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Open Paint and draw what I ask for",
+      "Open Paint and draw Satoru Gojo on my PC",
       "Work on DoOnce and verify the change",
       "Open an installed app on my PC"
     ],
