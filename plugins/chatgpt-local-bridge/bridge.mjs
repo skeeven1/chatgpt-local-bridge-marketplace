@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
-const VERSION = '16.2.0';
+const VERSION = '16.3.0';
 const PROTOCOL = 'chatgpt-local-bridge-v15';
 const IS_WIN = process.platform === 'win32';
 const MAX_TEXT_BYTES = 256 * 1024;
@@ -26,6 +26,7 @@ const BLOCKED_EXECUTABLES = new Set([
 ]);
 const BLOCKED_TARGET_EXTENSIONS = new Set(['.bat','.cmd','.ps1','.psm1','.vbs','.vbe','.js','.jse','.wsf','.wsh','.reg','.msc']);
 const SAFE_URL_SCHEMES = new Set(['steam:','uplay:','ubisoftconnect:','com.epicgames.launcher:']);
+const MAX_SVG_CHARS = 260000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const nowIso = () => new Date().toISOString();
@@ -612,6 +613,152 @@ async function screenCaptureAction(state, cmd) {
 }
 
 
+
+function validateSafeSvg(svg) {
+  const text = String(svg ?? '').trim();
+  if (!text || text.length > MAX_SVG_CHARS) throw new Error('SVG payload missing or too large');
+  if (!/^<svg[\s>]/i.test(text)) throw new Error('draw_in_paint requires a self-contained <svg> document');
+  const blocked = [
+    /<script\b/i, /<foreignObject\b/i, /<iframe\b/i, /<object\b/i, /<embed\b/i,
+    /\bon[a-z]+\s*=/i, /javascript\s*:/i, /@import\b/i,
+    /url\s*\(\s*["']?\s*(?:https?|file|data):/i,
+    /(?:xlink:)?href\s*=\s*["']\s*(?!#)/i
+  ];
+  for (const re of blocked) if (re.test(text)) throw new Error('SVG contains blocked active or external content');
+  return text;
+}
+
+function edgeExecutable() {
+  const candidates = [];
+  if (process.env.PROGRAMFILES_X86) candidates.push(path.join(process.env.PROGRAMFILES_X86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+  if (process.env.PROGRAMFILES) candidates.push(path.join(process.env.PROGRAMFILES, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+  if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'Microsoft', 'Edge', 'Application', 'msedge.exe'));
+  for (const c of candidates) if (fs.existsSync(c)) return c;
+  return IS_WIN ? 'msedge.exe' : '';
+}
+
+async function rasterizeSvgToPng(state, svg, width, height) {
+  if (!IS_WIN) throw new Error('SVG rasterization for Paint is available on Windows only');
+  const safeSvg = validateSafeSvg(svg);
+  const w = intField(width ?? 900, 'width', 64, 1600);
+  const h = intField(height ?? 900, 'height', 64, 1600);
+  const dir = path.join(state.dataDir, 'renders');
+  await fsp.mkdir(dir, { recursive: true });
+  const nonce = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const htmlPath = path.join(dir, `render-${nonce}.html`);
+  const pngPath = path.join(dir, `render-${nonce}.png`);
+  const profileDir = path.join(dir, `edge-profile-${nonce}`);
+  const html = `<!doctype html><meta charset="utf-8"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff}svg{width:100vw!important;height:100vh!important;display:block}</style>${safeSvg}`;
+  await fsp.writeFile(htmlPath, html, 'utf8');
+  await fsp.mkdir(profileDir, { recursive: true });
+  const edge = edgeExecutable();
+  const url = pathToFileURL(htmlPath).href;
+  const common = ['--no-first-run','--disable-features=msEdgeFirstRunExperience','--disable-gpu','--hide-scrollbars',`--user-data-dir=${profileDir}`,`--window-size=${w},${h}`,`--screenshot=${pngPath}`,url];
+  let r = await runCaptured(edge, ['--headless=new', ...common], { timeoutMs: 45000 });
+  if (r.code !== 0 || !fs.existsSync(pngPath)) {
+    r = await runCaptured(edge, ['--headless', ...common], { timeoutMs: 45000 });
+  }
+  await fsp.rm(htmlPath, { force: true });
+  await fsp.rm(profileDir, { recursive: true, force: true });
+  if (r.code !== 0 || !fs.existsSync(pngPath)) throw new Error(`Microsoft Edge SVG rasterization failed: ${truncate(r.stderr || r.stdout || r.error, 2000)}`);
+  const buf = await fsp.readFile(pngPath);
+  await fsp.rm(pngPath, { force: true });
+  if (!buf.length || buf.length > MAX_IMAGE_BYTES) throw new Error('Rasterized image rejected');
+  return { buf, width: w, height: h };
+}
+
+async function focusWindowHandle(state, hwnd) {
+  const h = Number(hwnd);
+  if (!Number.isFinite(h) || h <= 0) throw new Error('Invalid window handle');
+  const data = await callUiHelper(state, 'focus-window', { hwnd: h }, 12000);
+  return data;
+}
+
+function isPaintWindow(p) {
+  const proc = String(p?.ProcessName ?? '').toLowerCase();
+  const title = String(p?.MainWindowTitle ?? '').toLowerCase();
+  return proc === 'mspaint' || title === 'paint' || title.endsWith(' - paint') || title.includes('microsoft paint');
+}
+
+async function ensurePaintForeground(state) {
+  let win = (await processList()).find((p) => Number(p.MainWindowHandle) !== 0 && isPaintWindow(p));
+  if (!win) {
+    try { await launchAppAction(state, { name: 'Paint' }); }
+    catch { runDetached('mspaint.exe', []); }
+    for (let i = 0; i < 20; i++) {
+      await sleep(350);
+      win = (await processList()).find((p) => Number(p.MainWindowHandle) !== 0 && isPaintWindow(p));
+      if (win) break;
+    }
+  }
+  if (!win) throw new Error('Microsoft Paint did not expose a visible window');
+  await focusWindowHandle(state, Number(win.MainWindowHandle));
+  await sleep(350);
+  return { pid: Number(win.Id), hwnd: Number(win.MainWindowHandle), title: String(win.MainWindowTitle ?? 'Paint') };
+}
+
+async function drawInPaintAction(state, cmd) {
+  const mode = String(cmd.mode ?? 'exact').toLowerCase();
+  if (!['exact','mouse'].includes(mode)) throw new Error('mode must be exact or mouse');
+  const width = intField(cmd.width ?? 900, 'width', 64, 1600);
+  const height = intField(cmd.height ?? 900, 'height', 64, 1600);
+  const raster = await rasterizeSvgToPng(state, cmd.svg, width, height);
+  const target = await imageTargetCreateAction(state, { base64: raster.buf.toString('base64') });
+  const targetId = target.data.targetId;
+  const paint = await ensurePaintForeground(state);
+  let canvas;
+  try { canvas = (await findPaintCanvasAction(state)).data; }
+  catch { canvas = null; }
+
+  let renderWidth = width, renderHeight = height;
+  if (canvas) {
+    const scale = Math.min(1, Number(canvas.width) / width, Number(canvas.height) / height);
+    renderWidth = Math.max(32, Math.floor(width * scale));
+    renderHeight = Math.max(32, Math.floor(height * scale));
+  }
+
+  let render;
+  if (mode === 'mouse') {
+    if (!canvas) throw new Error('Paint canvas detection is required for visible mouse rendering');
+    render = await mouseRenderTargetAction(state, {
+      targetId, x: Number(canvas.x), y: Number(canvas.y), width: renderWidth, height: renderHeight,
+      threshold: cmd.threshold ?? 170, sampleStep: cmd.sampleStep ?? 2, maxRuns: cmd.maxRuns ?? 9000
+    });
+  } else {
+    render = await paintRenderTargetAction(state, { targetId, width: renderWidth, height: renderHeight });
+  }
+
+  await sleep(800);
+  let comparison = null;
+  if (canvas) {
+    try {
+      comparison = (await compareTargetRegionAction(state, {
+        targetId, x: Number(canvas.x), y: Number(canvas.y), width: renderWidth, height: renderHeight
+      })).data;
+      if (mode === 'exact' && Number(comparison.matchScore ?? 0) < Number(cmd.minScore ?? 0.94)) {
+        await ensurePaintForeground(state);
+        await paintRenderTargetAction(state, { targetId, width: renderWidth, height: renderHeight });
+        await sleep(600);
+        comparison = (await compareTargetRegionAction(state, {
+          targetId, x: Number(canvas.x), y: Number(canvas.y), width: renderWidth, height: renderHeight
+        })).data;
+      }
+    } catch {}
+  }
+
+  let screenshot = null;
+  try { screenshot = (await screenCaptureAction(state, { maxWidth: 1280 })).data; } catch {}
+  const score = comparison == null ? null : Number(comparison.matchScore ?? 0);
+  return {
+    status: 'ok',
+    message: score == null ? `Rendered drawing in Paint (${mode})` : `Rendered drawing in Paint (${mode}), visual match ${(score*100).toFixed(1)}%`,
+    data: {
+      targetId, mode, paint, canvas, renderWidth, renderHeight, comparison,
+      ...(screenshot ? { base64: screenshot.base64, mime: screenshot.mime, imageWidth: screenshot.imageWidth, imageHeight: screenshot.imageHeight } : {})
+    }
+  };
+}
+
 function decodeImagePayload(base64) {
   if (typeof base64 !== 'string' || base64.length < 16 || base64.length > Math.ceil(MAX_IMAGE_BYTES * 4 / 3) + 16) throw new Error('Invalid image payload length');
   let buf;
@@ -1058,6 +1205,7 @@ async function executeCommand(state, cmd) {
     case 'screen-capture-region': return await screenCaptureRegionAction(state, cmd);
     case 'sample-canvas-pixel': return await sampleCanvasPixelAction(state, cmd);
     case 'find-paint-canvas': return await findPaintCanvasAction(state, cmd);
+    case 'draw-in-paint': return await drawInPaintAction(state, cmd);
     case 'image-target-create': return await imageTargetCreateAction(state, cmd);
     case 'image-target-info': return await imageTargetInfoAction(state, cmd);
     case 'image-target-delete': return await imageTargetDeleteAction(state, cmd);
@@ -1215,6 +1363,11 @@ async function runSelfTest() {
     validateCommand({protocol:PROTOCOL,id:'x2',action:'status',sessionId:'abc',issuedAt:new Date(Date.now()-120000).toISOString(),expiresAt:new Date(Date.now()-60000).toISOString()}, fake);
     errors.push('expired command accepted');
   } catch {}
+
+  try {
+    ok(validateSafeSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0L10 10"/></svg>').startsWith('<svg'), 'safe svg accepted');
+    try { validateSafeSvg('<svg><script>alert(1)</script></svg>'); errors.push('active svg accepted'); } catch {}
+  } catch { errors.push('svg validation threw'); }
 
   try {
     const onePxPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9WQAAAAASUVORK5CYII=';
