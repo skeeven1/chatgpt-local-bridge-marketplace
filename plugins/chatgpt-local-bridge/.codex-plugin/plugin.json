@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-local-bridge",
-  "version": "16.3.0",
+  "version": "16.4.0",
   "description": "Control the user's own Windows PC and local development workspaces directly from normal ChatGPT requests.",
   "author": {
     "name": "skeeven1 / ChatGPT Local Bridge"
